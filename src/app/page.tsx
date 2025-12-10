@@ -5,7 +5,7 @@ import MenuSection from "../components/MenuSection";
 import Services from "../components/services";
 import Stats from "../components/stats";
 import Testimonials from "../components/testimonials";
-import Footer from "../components/footer";
+import Footer from "../components/Footer";
 
 export default function Home() {
   return (
