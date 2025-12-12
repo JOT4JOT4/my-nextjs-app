@@ -24,7 +24,7 @@ class CompanyOut(CompanyBase):
 class AccionBase(BaseModel):
     company_id: str = Field(..., description="ID de la compañía a la que pertenece")
     valor: float = Field(..., description="Valor actual de la acción")
-    historico: List[float] = Field(
+    historico: list[float] = Field(
         default_factory=list,
         description="Valores anteriores de la acción"
     )

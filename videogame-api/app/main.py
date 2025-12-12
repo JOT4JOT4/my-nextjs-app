@@ -31,7 +31,7 @@ async def shutdown_event():
     await close_mongo_connection()
 
 app.include_router(companies.router)
-app.include_router(acciones.router)
+app.include_router(actions.router)
 
 @app.get("/")
 async def root():

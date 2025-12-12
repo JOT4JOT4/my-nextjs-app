@@ -1,11 +1,9 @@
-import { url } from "inspector";
-
 export default function Hero() {
   return (
-    <section className="pt-20 bg-cover bg-center" style={{ backgroundImage: 'url("sharesImg.png")' }}>
+    <section className="pt-20 bg-cover bg-center" style={{ backgroundImage: "url('/sharesImg.png')" }}>
       <div className="max-w-4xl mx-auto text-center py-32 px-4">
         <h1 className="text-5xl md:text-6xl font-bold text-white">Welcome to DataMobile</h1>
-        <p className="mt-6 text-lg text-white/90">
+        <p className="mt-6 text-lg border-gray-950 text-white/90">
           check your shares and investments in real time with our mobile app
         </p>
         <div className="mt-8 space-x-4">

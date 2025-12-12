@@ -1,31 +1,92 @@
 'use client';
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale } from "chart.js";
 import { Line } from "react-chartjs-2";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale);
 
-const sharesItems = [
-  { name: "Nintendo", price: "$15.99", chg: "2.5%" },
-  { name: "Sony Playstation", price: "$20.99", chg: "1.8%" },
-  { name: "Microsoft", price: "$70.99", chg: "0.9%" },
-  // ... agrega los demás
-];
+// Types para la API
+interface Accion {
+  id: string;
+  company_id: string;
+  valor: number;
+  cambio: number;
+  historico: number[];
+}
 
-// mapping from item name to ticker symbol (adjust según prefieras)
+interface Company {
+  id: string;
+  name: string;
+}
+
+interface ShareItem {
+  id: string;
+  company_id: string;
+  name: string;
+  price: string;
+  chg: string;
+}
+
+// mapping from company name to ticker symbol
 const symbolMap: Record<string, string> = {
   "Nintendo": "NTDOY",
-  "Sony Playstation": "SONY",
+  "Sony": "SONY",
   "Microsoft": "MSFT",
-  // agrega más mapeos si hace falta
+  "Apple": "AAPL",
+  "Amazon": "AMZN",
+  "Google": "GOOGL",
 };
 
 export default function MenuSection() {
+  const [sharesItems, setSharesItems] = useState<ShareItem[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<{ name: string; symbol: string } | null>(null);
+  const [selected, setSelected] = useState<{ id: string; name: string; symbol: string } | null>(null);
   const [chartData, setChartData] = useState<any | null>(null);
   const [loading, setLoading] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
+
+  // Traer datos de Companies y Acciones desde la API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const companiesRes = await fetch("http://localhost:8000/companies");
+        const accionesRes = await fetch("http://localhost:8000/acciones");
+
+        if (!companiesRes.ok || !accionesRes.ok) {
+          throw new Error("Error al traer datos de la API");
+        }
+
+        const companies: Company[] = await companiesRes.json();
+        const acciones: Accion[] = await accionesRes.json();
+
+        // Combinar datos de companies y acciones
+        const combined = companies.map((company) => {
+          const accion = acciones.find((a) => a.company_id === company.id);
+          return {
+            id: company.id,
+            company_id: company.id,
+            name: company.name,
+            price: `$${(accion?.valor ?? 0).toFixed(2)}`,
+            chg: `${(accion?.cambio ?? 0).toFixed(2)}%`,
+          };
+        });
+
+        setSharesItems(combined);
+        setError(null);
+      } catch (err: any) {
+        setError(err.message || "Error al cargar datos");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   useEffect(() => {
     if (!selected) return;
@@ -55,7 +116,7 @@ export default function MenuSection() {
 
     // si hay API key, intentamos traer datos reales desde Finnhub
     const fetchData = async () => {
-      setLoading(true);
+      setChartLoading(true);
       setError(null);
       try {
         const symbol = selected.symbol;
@@ -88,37 +149,98 @@ export default function MenuSection() {
         setError(err.message || "Error al cargar datos");
         setChartData(null);
       } finally {
-        setLoading(false);
+        setChartLoading(false);
       }
     };
 
     fetchData();
   }, [selected]);
 
-  const openModal = (item: { name: string }) => {
+  const openModal = (item: ShareItem) => {
     const symbol = symbolMap[item.name] || item.name;
-    setSelected({ name: item.name, symbol });
+    setSelected({ id: item.id, name: item.name, symbol });
     setModalOpen(true);
   };
+
+  const filteredItems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return sharesItems.filter((item) => {
+      // search by name
+      if (term && !item.name.toLowerCase().includes(term)) return false;
+
+      // parse change value (e.g. "-2.5%" or "1.8%")
+      const raw = (item.chg || "").toString().replace("%", "");
+      const num = parseFloat(raw.replace(/[^0-9.-]/g, ""));
+
+      if (filter === "positive") return !isNaN(num) && num > 0;
+      if (filter === "negative") return !isNaN(num) && num < 0;
+      return true;
+    });
+  }, [searchTerm, filter]);
 
   return (
     <section id="menu" className="py-20 bg-gray-50">
       <div className="max-w-6xl mx-auto px-4">
-        <h2 className="text-4xl font-bold text-center mb-12">Checkout our shares</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {sharesItems.map((item, i) => (
-            <div key={i} className="bg-white p-6 rounded-lg shadow-lg flex flex-col justify-between">
-              <div>
-                <h3 className="text-xl font-semibold">{item.name}</h3>
-                <p className="text-gray-500 mt-2">{item.chg}</p>
-              </div>
-              <div className="mt-4 flex justify-between items-center">
-                <span className="text-lg font-bold">{item.price}</span>
-                <button onClick={() => openModal(item)} className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">View</button>
-              </div>
+        <h2 className="text-4xl font-bold text-center mb-6">Search for company shares</h2>
+
+        {error && (
+          <div className="max-w-2xl mx-auto mb-6 p-4 bg-red-100 border border-red-400 rounded-md">
+            <p className="text-red-700"><strong>Error:</strong> {error}</p>
+            <p className="text-red-600 text-sm mt-2">Asegúrate de que la API FastAPI esté corriendo en http://localhost:8000</p>
+          </div>
+        )}
+
+        {loading && (
+          <div className="text-center py-20">
+            <p className="text-gray-600">Cargando datos de la API...</p>
+          </div>
+        )}
+
+        {!loading && sharesItems.length === 0 && !error && (
+          <div className="text-center py-20">
+            <p className="text-gray-600">No hay datos disponibles.</p>
+          </div>
+        )}
+
+        {!loading && sharesItems.length > 0 && (
+          <>
+            <div className="max-w-2xl mx-auto mb-8 flex gap-3">
+              <input
+                aria-label="Buscar compañía"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 border rounded-md shadow-sm"
+                placeholder="Buscar por nombre..."
+              />
+
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value as any)}
+                className="px-3 py-2 border rounded-md"
+                aria-label="Filtrar por cambio"
+              >
+                <option value="all">Todos</option>
+                <option value="positive">Subida</option>
+                <option value="negative">Bajada</option>
+              </select>
             </div>
-          ))}
-        </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredItems.map((item, i) => (
+                <div key={i} className="bg-white p-6 rounded-lg shadow-lg flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-xl font-semibold">{item.name}</h3>
+                    <p className="text-gray-500 mt-2">{item.chg}</p>
+                  </div>
+                  <div className="mt-4 flex justify-between items-center">
+                    <span className="text-lg font-bold">{item.price}</span>
+                    <button onClick={() => openModal(item)} className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">View</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modal overlay */}
@@ -135,7 +257,7 @@ export default function MenuSection() {
 
             <h3 className="text-2xl font-semibold mb-4">{selected.name} — {selected.symbol}</h3>
 
-            {loading && <p>Cargando datos...</p>}
+            {chartLoading && <p>Cargando datos...</p>}
             {error && <p className="text-red-600">Error: {error}</p>}
 
             {chartData ? (
@@ -147,7 +269,7 @@ export default function MenuSection() {
                   scales: { x: { display: true }, y: { display: true } }
                 }} />
               </div>
-            ) : !loading && !error ? (
+            ) : !chartLoading && !error ? (
               <p>No hay datos para mostrar.</p>
             ) : null}
             <div className="mt-4 text-right">
