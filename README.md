@@ -41,3 +41,7 @@ docker run -d --name mongo-videogames \
   -v mongo_data:/data/db \
   mongo:7
 ```
+## Grupo
+
+-Juan Pablo Vargas Corral
+-Cristobal Andres Luna Gonzalez
