@@ -18,6 +18,22 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+Second, install and run the FastAPI:
+
+```bash
+pip install fastapi uvicorn[standard] motor
+
+python -m uvicorn app.main:app --reload --port 8000
+```
+Third, Levantar la base:
+
+```bash
+docker run -d --name mongo-videogames \
+  -p 27017:27017 \
+  -v mongo_data:/data/db \
+  mongo:7
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
