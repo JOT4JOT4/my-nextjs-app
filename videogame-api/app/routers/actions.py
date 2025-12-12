@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status , Body
-from typing import List
+from typing import List, Optional
 from bson import ObjectId
 
 from app.db import db
@@ -25,10 +25,24 @@ def map_accion(doc) -> AccionOut:
     )
 
 @router.get("", response_model=List[AccionOut])
-async def list_acciones():
+async def list_acciones(filter: Optional[str] = None, company_id: Optional[str] = None):
     col = get_accion_collection()
     acciones: list[AccionOut] = []
-    cursor = col.find({})
+
+    query = {}
+    if filter == "positive":
+        query["cambio"] = {"$gt": 0}
+    elif filter == "negative":
+        query["cambio"] = {"$lt": 0}
+
+    if company_id:
+        try:
+            oid = ObjectId(company_id)
+            query["company_id"] = oid
+        except Exception:
+            raise HTTPException(status_code=400, detail="company_id inválido")
+
+    cursor = col.find(query)
     async for doc in cursor:
         acciones.append(map_accion(doc))
     return acciones
@@ -81,3 +95,17 @@ async def actualizar_valor(accion: AccionCreate):
 
     updated = await col.find_one({"_id": doc["_id"]})
     return map_accion(updated)   
+
+
+@router.get("/company/{company_id}", response_model=AccionOut)
+async def get_accion_by_company(company_id: str):
+    col = get_accion_collection()
+    try:
+        oid = ObjectId(company_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="company_id inválido")
+
+    doc = await col.find_one({"company_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Acción no encontrada para la compañía")
+    return map_accion(doc)

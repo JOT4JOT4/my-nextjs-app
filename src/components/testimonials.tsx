@@ -1,3 +1,4 @@
+// Esto es un extra por si nos gustaría agregar noticias, velo si puedes
 const testimonials = [
   { name: "Warner bros. buy by netflix", quote: "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore..." },
   { name: "Jeff Bezos burn Amazon Services", quote: "Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore..." },

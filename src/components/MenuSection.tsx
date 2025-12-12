@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, TimeScale } from "chart.js";
 import { Line } from "react-chartjs-2";
 
@@ -39,6 +39,7 @@ const symbolMap: Record<string, string> = {
 
 export default function MenuSection() {
   const [sharesItems, setSharesItems] = useState<ShareItem[]>([]);
+  const [accionesState, setAccionesState] = useState<Accion[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<{ id: string; name: string; symbol: string } | null>(null);
   const [chartData, setChartData] = useState<any | null>(null);
@@ -48,24 +49,33 @@ export default function MenuSection() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<"all" | "positive" | "negative">("all");
 
-  // Traer datos de Companies y Acciones desde la API
+  // Traer datos de Companies y Acciones desde la API (usa endpoints para filtrar)
   useEffect(() => {
-    const fetchData = async () => {
+    let mounted = true;
+    let timer: any = null;
+
+    const fetchFiltered = async () => {
       try {
         setLoading(true);
-        const companiesRes = await fetch("http://localhost:8000/companies");
-        const accionesRes = await fetch("http://localhost:8000/acciones");
+
+        // Companies: pasar `q` si hay searchTerm
+        const qParam = searchTerm ? `?q=${encodeURIComponent(searchTerm)}` : "";
+        const companiesRes = await fetch(`http://localhost:8000/companies${qParam}`);
+
+        // Acciones: pasar `filter` si no es 'all'
+        const accionesFilter = filter === "all" ? "" : `?filter=${encodeURIComponent(filter)}`;
+        const accionesRes = await fetch(`http://localhost:8000/acciones${accionesFilter}`);
 
         if (!companiesRes.ok || !accionesRes.ok) {
           throw new Error("Error al traer datos de la API");
         }
 
         const companies: Company[] = await companiesRes.json();
-        const acciones: Accion[] = await accionesRes.json();
+        const accionesData: Accion[] = await accionesRes.json();
 
         // Combinar datos de companies y acciones
         const combined = companies.map((company) => {
-          const accion = acciones.find((a) => a.company_id === company.id);
+          const accion = accionesData.find((a) => a.company_id === company.id);
           return {
             id: company.id,
             company_id: company.id,
@@ -75,69 +85,63 @@ export default function MenuSection() {
           };
         });
 
+        if (!mounted) return;
         setSharesItems(combined);
+        setAccionesState(accionesData);
         setError(null);
       } catch (err: any) {
+        if (!mounted) return;
         setError(err.message || "Error al cargar datos");
         console.error(err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
-    fetchData();
-  }, []);
+    // debounce para evitar llamadas en cada tecla
+    timer = setTimeout(fetchFiltered, 250);
+
+    return () => {
+      mounted = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [searchTerm, filter]);
 
   useEffect(() => {
     if (!selected) return;
-    const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY; // poner tu API key en .env.local
-    if (!apiKey) {
-      // Si no hay API key, mostramos datos de ejemplo
-      const now = Date.now();
-      const labels = Array.from({ length: 30 }, (_, i) => {
-        const d = new Date(now - (29 - i) * 24 * 60 * 60 * 1000);
-        return d.toLocaleDateString();
-      });
-      const values = labels.map((_, i) => 50 + Math.sin(i / 3) * 5 + Math.random() * 2);
-      setChartData({
-        labels,
-        datasets: [
-          {
-            label: `${selected.name} (demo)`,
-            data: values,
-            borderColor: "rgba(59,130,246,1)",
-            backgroundColor: "rgba(59,130,246,0.2)",
-            tension: 0.3,
-          },
-        ],
-      });
-      return;
-    }
 
-    // si hay API key, intentamos traer datos reales desde Finnhub
-    const fetchData = async () => {
+    const controller = new AbortController();
+
+    const fetchAccion = async () => {
       setChartLoading(true);
       setError(null);
       try {
-        const symbol = selected.symbol;
-        const to = Math.floor(Date.now() / 1000);
-        const from = to - 60 * 60 * 24 * 30; // últimos 30 días
-        const url = `https://finnhub.io/api/v1/stock/candle?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}&token=${apiKey}`;
-        const res = await fetch(url);
-        const json = await res.json();
-        if (json.s !== "ok" || !json.c) {
-          throw new Error(json.error || "No hay datos disponibles");
+        const res = await fetch(`http://localhost:8000/acciones/company/${selected.id}`, { signal: controller.signal });
+        if (!res.ok) {
+          // si 404, mostramos demo; si otro error, lanzamos
+          if (res.status === 404) {
+            setChartData(null);
+            setError(null);
+            setChartLoading(false);
+            return;
+          }
+          throw new Error(`Error al obtener acción: ${res.status}`);
         }
-        const labels = (json.t || []).map((ts: number) => {
-          const d = new Date(ts * 1000);
+
+        const accion: Accion = await res.json();
+        const values = [...(accion.historico || []), accion.valor];
+
+        const now = Date.now();
+        const labels = values.map((_, i) => {
+          const d = new Date(now - (values.length - 1 - i) * 24 * 60 * 60 * 1000);
           return d.toLocaleDateString();
         });
-        const values = json.c;
+
         setChartData({
           labels,
           datasets: [
             {
-              label: `${selected.name} (${symbol})`,
+              label: `${selected.name}`,
               data: values,
               borderColor: "rgba(16,185,129,1)",
               backgroundColor: "rgba(16,185,129,0.2)",
@@ -146,14 +150,17 @@ export default function MenuSection() {
           ],
         });
       } catch (err: any) {
-        setError(err.message || "Error al cargar datos");
+        if (err.name === 'AbortError') return;
+        setError(err.message || "Error al construir gráfico");
         setChartData(null);
       } finally {
         setChartLoading(false);
       }
     };
 
-    fetchData();
+    fetchAccion();
+
+    return () => controller.abort();
   }, [selected]);
 
   const openModal = (item: ShareItem) => {
@@ -162,21 +169,7 @@ export default function MenuSection() {
     setModalOpen(true);
   };
 
-  const filteredItems = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
-    return sharesItems.filter((item) => {
-      // search by name
-      if (term && !item.name.toLowerCase().includes(term)) return false;
-
-      // parse change value (e.g. "-2.5%" or "1.8%")
-      const raw = (item.chg || "").toString().replace("%", "");
-      const num = parseFloat(raw.replace(/[^0-9.-]/g, ""));
-
-      if (filter === "positive") return !isNaN(num) && num > 0;
-      if (filter === "negative") return !isNaN(num) && num < 0;
-      return true;
-    });
-  }, [searchTerm, filter]);
+  // Usamos el filtrado en servidor; `sharesItems` ya viene filtrado por la API
 
   return (
     <section id="menu" className="py-20 bg-gray-50">
@@ -226,7 +219,7 @@ export default function MenuSection() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredItems.map((item, i) => (
+              {sharesItems.map((item: ShareItem, i: number) => (
                 <div key={i} className="bg-white p-6 rounded-lg shadow-lg flex flex-col justify-between">
                   <div>
                     <h3 className="text-xl font-semibold">{item.name}</h3>

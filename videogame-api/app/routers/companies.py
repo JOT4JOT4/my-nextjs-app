@@ -1,6 +1,6 @@
 # app/routers/companies.py
 from fastapi import APIRouter, HTTPException, status
-from typing import List
+from typing import List, Optional
 from bson import ObjectId
 
 from app.db import db
@@ -27,10 +27,14 @@ def map_company(doc) -> CompanyOut:
     )
 
 @router.get("", response_model=List[CompanyOut])
-async def list_companies():
+async def list_companies(q: Optional[str] = None):
     collection = get_company_collection()
     companies: list[CompanyOut] = []
-    cursor = collection.find({})
+    query = {}
+    if q:
+        query = {"name": {"$regex": q, "$options": "i"}}
+
+    cursor = collection.find(query)
     async for doc in cursor:
         companies.append(map_company(doc))
     return companies
